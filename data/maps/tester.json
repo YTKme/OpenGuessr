@@ -1,0 +1,19 @@
+{
+  "id": "tester",
+  "name": "Tester",
+  "portals": [
+    {
+      "id": "portaltest",
+      "image": "tester.jpg",
+      "coordinate": {
+        "lat": 42.3601,
+        "lng": -71.0589
+      },
+      "markers": [],
+      "caption": "Seed panorama"
+    }
+  ],
+  "links": [],
+  "createdAt": "2021-05-01T00:00:00.000Z",
+  "updatedAt": "2021-05-01T00:00:00.000Z"
+}
