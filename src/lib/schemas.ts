@@ -52,6 +52,15 @@ export const gameMapSchema = z.object({
 })
 export type GameMap = z.infer<typeof gameMapSchema>
 
+/** Lightweight map info for lists and pickers (omits the portal payload). */
+export const mapSummarySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  portalCount: z.number().int(),
+  previewImage: z.string().nullable(),
+})
+export type MapSummary = z.infer<typeof mapSummarySchema>
+
 /**
  * What the client receives for a single game round. Deliberately excludes the
  * true `coordinate` so the answer is never sent to the browser before the

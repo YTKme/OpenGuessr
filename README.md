@@ -51,15 +51,15 @@ Then open http://localhost:3000.
 
 ## Scripts
 
-| Command | Description |
-| --- | --- |
-| `npm run dev` | Start the dev server on port 3000 |
-| `npm run build` | Production build (client + server) |
-| `npm start` | Run the production server (after `build`) |
-| `npm test` | Run unit tests (Vitest) |
-| `npm run lint` | Lint with ESLint |
-| `npm run typecheck` | Generate routes and type-check |
-| `npm run format` | Format with Prettier + ESLint `--fix` |
+| Command             | Description                               |
+| ------------------- | ----------------------------------------- |
+| `npm run dev`       | Start the dev server on port 3000         |
+| `npm run build`     | Production build (client + server)        |
+| `npm start`         | Run the production server (after `build`) |
+| `npm test`          | Run unit tests (Vitest)                   |
+| `npm run lint`      | Lint with ESLint                          |
+| `npm run typecheck` | Generate routes and type-check            |
+| `npm run format`    | Format with Prettier + ESLint `--fix`     |
 
 ## License
 

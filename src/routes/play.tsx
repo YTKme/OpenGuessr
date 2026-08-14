@@ -11,7 +11,12 @@ import { Badge } from '#/components/ui/badge'
 import { Progress } from '#/components/ui/progress'
 
 export const Route = createFileRoute('/play')({
-  loader: () => getRounds({ data: { count: DEFAULT_ROUNDS } }),
+  validateSearch: (search: Record<string, unknown>): { mapId?: string } => ({
+    mapId: typeof search.mapId === 'string' ? search.mapId : undefined,
+  }),
+  loaderDeps: ({ search }) => ({ mapId: search.mapId }),
+  loader: ({ deps }) =>
+    getRounds({ data: { count: DEFAULT_ROUNDS, mapId: deps.mapId } }),
   component: PlayRoute,
   errorComponent: NoPanoramas,
 })
@@ -24,6 +29,7 @@ function formatDistance(km: number): string {
 
 function PlayRoute() {
   const initialRounds = Route.useLoaderData()
+  const { mapId } = Route.useSearch()
   const [rounds, setRounds] = useState<Array<Round>>(initialRounds)
   const [index, setIndex] = useState(0)
   const [guess, setGuess] = useState<Coordinate | null>(null)
@@ -60,7 +66,7 @@ function PlayRoute() {
   }
 
   async function onPlayAgain() {
-    const fresh = await getRounds({ data: { count: DEFAULT_ROUNDS } })
+    const fresh = await getRounds({ data: { count: DEFAULT_ROUNDS, mapId } })
     setRounds(fresh)
     setIndex(0)
     setGuess(null)

@@ -10,7 +10,8 @@ import type { GameMap, Portal } from '#/lib/schemas'
  * insulated behind the async, typed API below.
  */
 
-const DATA_DIR = path.resolve(process.cwd(), 'data', 'maps')
+const DATA_DIR =
+  process.env.OPENGUESSR_DATA_DIR ?? path.resolve(process.cwd(), 'data', 'maps')
 
 /** Only allow simple ids so a caller can never traverse outside DATA_DIR. */
 const SAFE_ID = /^[a-zA-Z0-9_-]+$/
