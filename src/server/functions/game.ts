@@ -1,5 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
+import { userMiddleware } from '#/lib/auth-functions'
 import { coordinateSchema } from '#/lib/schemas'
 import type { GuessResult, Round } from '#/lib/schemas'
 import { getAllPortals, getMap, getPortal } from '#/server/repository/maps'
@@ -35,6 +36,7 @@ async function portalsForMap(mapId: string) {
  * guesses (see {@link submitGuess}).
  */
 export const getRounds = createServerFn({ method: 'GET' })
+  .middleware([userMiddleware])
   .validator(
     z.object({
       count: z.number().int().min(1).max(20),
@@ -60,6 +62,7 @@ export const getRounds = createServerFn({ method: 'GET' })
 
 /** Score a player's guess for a round, server-authoritatively. */
 export const submitGuess = createServerFn({ method: 'POST' })
+  .middleware([userMiddleware])
   .validator(
     z.object({
       mapId: z.string(),

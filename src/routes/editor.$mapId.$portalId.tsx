@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, createFileRoute, notFound } from '@tanstack/react-router'
 import { ArrowLeft, Check, MapPinned, Plus, Trash2 } from 'lucide-react'
+import { requireAdmin } from '#/lib/auth-functions'
 import type { Coordinate, Marker } from '#/lib/schemas'
 import { getMap } from '#/server/functions/maps'
 import { savePortal } from '#/server/functions/portal'
@@ -11,6 +12,9 @@ import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 
 export const Route = createFileRoute('/editor/$mapId/$portalId')({
+  beforeLoad: async () => {
+    await requireAdmin()
+  },
   loader: async ({ params }) => {
     const map = await getMap({ data: { id: params.mapId } })
     if (!map) throw notFound()
@@ -179,7 +183,10 @@ function EditorRoute() {
 
           <section className="island-shell rounded-2xl p-5">
             <h2 className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-[var(--sea-ink)]">
-              <MapPinned className="h-4 w-4 text-[var(--lagoon-deep)]" aria-hidden />
+              <MapPinned
+                className="h-4 w-4 text-[var(--lagoon-deep)]"
+                aria-hidden
+              />
               Location
             </h2>
             <p className="mb-3 text-xs text-[var(--sea-ink-soft)]">
@@ -223,7 +230,10 @@ function EditorRoute() {
                       aria-label={`Link target for marker ${index + 1}`}
                       value={marker.linkPortalId ?? ''}
                       onChange={(event) =>
-                        setMarkerLink(marker.id, event.target.value || undefined)
+                        setMarkerLink(
+                          marker.id,
+                          event.target.value || undefined,
+                        )
                       }
                       className={SELECT_CLASS}
                     >

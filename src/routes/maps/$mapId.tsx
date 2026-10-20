@@ -1,9 +1,13 @@
 import { Link, createFileRoute, notFound } from '@tanstack/react-router'
 import { ArrowLeft, Pencil, Play } from 'lucide-react'
+import { requireUser } from '#/lib/auth-functions'
 import { getMap } from '#/server/functions/maps'
 import { Button } from '#/components/ui/button'
 
 export const Route = createFileRoute('/maps/$mapId')({
+  beforeLoad: async () => {
+    await requireUser()
+  },
   loader: async ({ params }) => {
     const map = await getMap({ data: { id: params.mapId } })
     if (!map) throw notFound()

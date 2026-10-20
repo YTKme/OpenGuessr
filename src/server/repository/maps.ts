@@ -1,122 +1,136 @@
-import { promises as fs } from 'node:fs'
-import path from 'node:path'
-import { gameMapSchema } from '#/lib/schemas'
+import { and, eq } from 'drizzle-orm'
 import type { GameMap, Portal } from '#/lib/schemas'
+import { db } from '#/server/db'
+import { maps, portals } from '#/server/db/schema'
 
 /**
- * File-based data layer — the single module that touches the filesystem. Maps
- * are stored as JSON at `data/maps/<id>.json` (not web-served). Swapping this
- * for a database later means reimplementing only this module; callers are
- * insulated behind the async, typed API below.
+ * Data access for maps and portals, backed by SQLite (Drizzle + better-sqlite3).
+ * Rows are mapped to the shared Zod domain types at the boundary. Same public
+ * API as the previous file-based repository, so callers are unchanged.
  */
 
-const DATA_DIR =
-  process.env.OPENGUESSR_DATA_DIR ?? path.resolve(process.cwd(), 'data', 'maps')
+type MapRow = typeof maps.$inferSelect
+type PortalRow = typeof portals.$inferSelect
 
-/** Only allow simple ids so a caller can never traverse outside DATA_DIR. */
-const SAFE_ID = /^[a-zA-Z0-9_-]+$/
-
-function assertSafeId(id: string): void {
-  if (!SAFE_ID.test(id)) {
-    throw new Error(`Invalid map id: ${JSON.stringify(id)}`)
+function toPortal(row: PortalRow): Portal {
+  return {
+    id: row.id,
+    image: row.image,
+    coordinate: { lat: row.lat, lng: row.lng },
+    markers: row.markers,
+    caption: row.caption ?? undefined,
   }
 }
 
-function mapPath(id: string): string {
-  assertSafeId(id)
-  return path.join(DATA_DIR, `${id}.json`)
-}
-
-async function ensureDataDir(): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true })
-}
-
-async function readMapFile(id: string): Promise<GameMap | null> {
-  let raw: string
-  try {
-    raw = await fs.readFile(mapPath(id), 'utf8')
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
-    throw error
+function toGameMap(row: MapRow, portalRows: Array<PortalRow>): GameMap {
+  return {
+    id: row.id,
+    name: row.name,
+    portals: portalRows.map(toPortal),
+    links: [],
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   }
-  return gameMapSchema.parse(JSON.parse(raw))
 }
 
-/** All maps on disk, sorted by name. */
-export async function listMaps(): Promise<GameMap[]> {
-  await ensureDataDir()
-  const entries = await fs.readdir(DATA_DIR)
-  const maps = await Promise.all(
-    entries
-      .filter((entry) => entry.endsWith('.json'))
-      .map((entry) => readMapFile(entry.replace(/\.json$/, ''))),
-  )
-  return maps
-    .filter((map): map is GameMap => map !== null)
+export async function listMaps(): Promise<Array<GameMap>> {
+  const mapRows = db.select().from(maps).all()
+  const portalRows = db.select().from(portals).all()
+  const grouped = new Map<string, Array<PortalRow>>()
+  for (const portal of portalRows) {
+    const list = grouped.get(portal.mapId)
+    if (list) list.push(portal)
+    else grouped.set(portal.mapId, [portal])
+  }
+  return mapRows
+    .map((row) => toGameMap(row, grouped.get(row.id) ?? []))
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export async function getMap(id: string): Promise<GameMap | null> {
-  return readMapFile(id)
-}
-
-export async function saveMap(map: GameMap): Promise<GameMap> {
-  await ensureDataDir()
-  const next: GameMap = { ...map, updatedAt: new Date().toISOString() }
-  const validated = gameMapSchema.parse(next)
-  await fs.writeFile(
-    mapPath(validated.id),
-    `${JSON.stringify(validated, null, 2)}\n`,
-    'utf8',
-  )
-  return validated
+  const mapRow = db.select().from(maps).where(eq(maps.id, id)).get()
+  if (!mapRow) return null
+  const portalRows = db
+    .select()
+    .from(portals)
+    .where(eq(portals.mapId, id))
+    .all()
+  return toGameMap(mapRow, portalRows)
 }
 
 export async function createMap(input: {
   id: string
   name: string
+  ownerId?: string | null
 }): Promise<GameMap> {
   const now = new Date().toISOString()
-  return saveMap({
+  const row: MapRow = {
     id: input.id,
     name: input.name,
-    portals: [],
-    links: [],
+    ownerId: input.ownerId ?? null,
     createdAt: now,
     updatedAt: now,
-  })
+  }
+  db.insert(maps).values(row).run()
+  return toGameMap(row, [])
 }
 
-/** Insert or replace a portal (matched by id) within a map. */
+/** Insert or replace a portal (matched by id) and touch the owning map. */
 export async function upsertPortal(
   mapId: string,
   portal: Portal,
 ): Promise<GameMap> {
-  const map = await getMap(mapId)
-  if (!map) throw new Error(`Map not found: ${mapId}`)
-  const portals = map.portals.filter((p) => p.id !== portal.id)
-  portals.push(portal)
-  return saveMap({ ...map, portals })
+  const owner = db
+    .select({ id: maps.id })
+    .from(maps)
+    .where(eq(maps.id, mapId))
+    .get()
+  if (!owner) throw new Error(`Map not found: ${mapId}`)
+
+  const fields = {
+    image: portal.image,
+    lat: portal.coordinate.lat,
+    lng: portal.coordinate.lng,
+    caption: portal.caption ?? null,
+    markers: portal.markers,
+  }
+  db.insert(portals)
+    .values({ id: portal.id, mapId, ...fields })
+    .onConflictDoUpdate({ target: portals.id, set: { mapId, ...fields } })
+    .run()
+  db.update(maps)
+    .set({ updatedAt: new Date().toISOString() })
+    .where(eq(maps.id, mapId))
+    .run()
+
+  const result = await getMap(mapId)
+  if (!result) throw new Error(`Map not found: ${mapId}`)
+  return result
 }
 
-/** Every portal across every map, tagged with its owning map. */
 export async function getAllPortals(): Promise<
   Array<{ mapId: string; mapName: string; portal: Portal }>
 > {
-  const maps = await listMaps()
-  return maps.flatMap((map) =>
-    map.portals.map((portal) => ({
-      mapId: map.id,
-      mapName: map.name,
-      portal,
-    })),
-  )
+  const rows = db
+    .select({ map: maps, portal: portals })
+    .from(portals)
+    .innerJoin(maps, eq(portals.mapId, maps.id))
+    .all()
+  return rows.map((row) => ({
+    mapId: row.map.id,
+    mapName: row.map.name,
+    portal: toPortal(row.portal),
+  }))
 }
 
 export async function getPortal(
   mapId: string,
   portalId: string,
 ): Promise<Portal | null> {
-  const map = await getMap(mapId)
-  return map?.portals.find((p) => p.id === portalId) ?? null
+  const row = db
+    .select()
+    .from(portals)
+    .where(and(eq(portals.mapId, mapId), eq(portals.id, portalId)))
+    .get()
+  return row ? toPortal(row) : null
 }

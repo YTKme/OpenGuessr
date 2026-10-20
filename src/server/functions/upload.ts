@@ -1,6 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
+import { adminMiddleware } from '#/lib/auth-functions'
 import { createMap, getMap, upsertPortal } from '#/server/repository/maps'
 import { savePanoramaImage } from '#/server/repository/panoramas'
 
@@ -20,6 +21,7 @@ const uploadFieldsSchema = z.object({
  * can stream the file directly.
  */
 export const uploadPanorama = createServerFn({ method: 'POST' })
+  .middleware([adminMiddleware])
   .validator((data: unknown) => {
     if (!(data instanceof FormData)) {
       throw new Error('Expected multipart form data.')
@@ -42,27 +44,33 @@ export const uploadPanorama = createServerFn({ method: 'POST' })
     })
     return { file, ...fields }
   })
-  .handler(async ({ data }): Promise<{ mapId: string; image: string }> => {
-    const bytes = new Uint8Array(await data.file.arrayBuffer())
-    const image = await savePanoramaImage(data.file.type, bytes)
+  .handler(
+    async ({ data, context }): Promise<{ mapId: string; image: string }> => {
+      const bytes = new Uint8Array(await data.file.arrayBuffer())
+      const image = await savePanoramaImage(data.file.type, bytes)
 
-    let mapId = data.mapId
-    if (mapId === NEW_MAP) {
-      const name = data.newMapName
-      if (!name) throw new Error('Please name your new map.')
-      const map = await createMap({ id: randomUUID(), name })
-      mapId = map.id
-    } else if (!(await getMap(mapId))) {
-      throw new Error('That map no longer exists.')
-    }
+      let mapId = data.mapId
+      if (mapId === NEW_MAP) {
+        const name = data.newMapName
+        if (!name) throw new Error('Please name your new map.')
+        const map = await createMap({
+          id: randomUUID(),
+          name,
+          ownerId: context.user.id,
+        })
+        mapId = map.id
+      } else if (!(await getMap(mapId))) {
+        throw new Error('That map no longer exists.')
+      }
 
-    await upsertPortal(mapId, {
-      id: randomUUID(),
-      image,
-      coordinate: { lat: data.lat, lng: data.lng },
-      markers: [],
-      caption: data.caption,
-    })
+      await upsertPortal(mapId, {
+        id: randomUUID(),
+        image,
+        coordinate: { lat: data.lat, lng: data.lng },
+        markers: [],
+        caption: data.caption,
+      })
 
-    return { mapId, image }
-  })
+      return { mapId, image }
+    },
+  )

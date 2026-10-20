@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
+import { requireAdmin } from '#/lib/auth-functions'
 import { UploadCloud } from 'lucide-react'
 import type { Coordinate } from '#/lib/schemas'
 import { listMaps } from '#/server/functions/maps'
@@ -11,6 +12,9 @@ import { Input } from '#/components/ui/input'
 import { Label } from '#/components/ui/label'
 
 export const Route = createFileRoute('/upload')({
+  beforeLoad: async () => {
+    await requireAdmin()
+  },
   loader: () => listMaps(),
   component: UploadRoute,
 })

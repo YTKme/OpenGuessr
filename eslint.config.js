@@ -26,6 +26,7 @@ export default [
       'prettier.config.js',
       'src/routeTree.gen.ts',
       'src/components/ui/**',
+      'src/server/db/auth-schema.ts',
     ],
   },
 ]

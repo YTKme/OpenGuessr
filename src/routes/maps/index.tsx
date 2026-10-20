@@ -1,9 +1,13 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { ImageOff } from 'lucide-react'
+import { requireUser } from '#/lib/auth-functions'
 import { listMaps } from '#/server/functions/maps'
 import { Button } from '#/components/ui/button'
 
 export const Route = createFileRoute('/maps/')({
+  beforeLoad: async () => {
+    await requireUser()
+  },
   loader: () => listMaps(),
   component: MapsIndex,
 })

@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import type { Marker } from '#/lib/schemas'
 
 type MapsRepo = typeof import('#/server/repository/maps')
 type PanoramaRepo = typeof import('#/server/repository/panoramas')
@@ -23,9 +24,10 @@ let panoramas: PanoramaRepo
 
 beforeAll(async () => {
   tmpBase = await fs.mkdtemp(path.join(os.tmpdir(), 'openguessr-'))
-  process.env.OPENGUESSR_DATA_DIR = path.join(tmpBase, 'maps')
+  process.env.DATABASE_URL = path.join(tmpBase, 'test.db')
   process.env.OPENGUESSR_PANORAMA_DIR = path.join(tmpBase, 'panoramas')
-  // Import after setting env so the modules resolve the temp directories.
+  // Import after setting env: importing the repo boots the DB against the temp
+  // file (runs migrations + seed).
   repo = await import('#/server/repository/maps')
   panoramas = await import('#/server/repository/panoramas')
 })
@@ -55,24 +57,39 @@ describe('savePanoramaImage', () => {
   })
 })
 
-describe('upload persistence pipeline', () => {
-  it('creates a map and upserts a located portal', async () => {
-    const image = await panoramas.savePanoramaImage('image/jpeg', TINY_PNG)
-    const map = await repo.createMap({ id: randomUUID(), name: 'Test City' })
+describe('maps repository (SQLite)', () => {
+  it('seeds and reads the tester map', async () => {
+    const tester = await repo.getMap('tester')
+    expect(tester?.name).toBe('Tester')
+    expect(tester?.portals[0]?.coordinate).toEqual({
+      lat: 42.3601,
+      lng: -71.0589,
+    })
+  })
 
+  it('creates a map and upserts a located portal with markers', async () => {
+    const marker: Marker = {
+      id: 'm1',
+      polygon: [
+        [0, 0],
+        [0.1, 0],
+        [0, 0.1],
+      ],
+    }
+    const map = await repo.createMap({ id: randomUUID(), name: 'Test City' })
     await repo.upsertPortal(map.id, {
       id: 'portal-1',
-      image,
+      image: 'a.jpg',
       coordinate: { lat: 48.8584, lng: 2.2945 },
-      markers: [],
+      markers: [marker],
       caption: 'Eiffel Tower',
     })
 
     const loaded = await repo.getMap(map.id)
-    expect(loaded?.name).toBe('Test City')
     expect(loaded?.portals).toHaveLength(1)
-    expect(loaded?.portals[0].image).toBe(image)
+    expect(loaded?.portals[0].image).toBe('a.jpg')
     expect(loaded?.portals[0].coordinate).toEqual({ lat: 48.8584, lng: 2.2945 })
+    expect(loaded?.portals[0].markers).toEqual([marker])
   })
 
   it('replaces a portal with the same id rather than duplicating', async () => {
@@ -88,5 +105,17 @@ describe('upload persistence pipeline', () => {
     const loaded = await repo.getMap(map.id)
     expect(loaded?.portals).toHaveLength(1)
     expect(loaded?.portals[0].image).toBe('b.jpg')
+  })
+
+  it('lists all maps including newly created ones', async () => {
+    const before = (await repo.listMaps()).length
+    await repo.createMap({ id: randomUUID(), name: 'Another' })
+    expect((await repo.listMaps()).length).toBe(before + 1)
+  })
+
+  it('exposes every portal via getAllPortals', async () => {
+    const all = await repo.getAllPortals()
+    expect(all.some((entry) => entry.mapId === 'tester')).toBe(true)
+    expect(all.every((entry) => 'lat' in entry.portal.coordinate)).toBe(true)
   })
 })

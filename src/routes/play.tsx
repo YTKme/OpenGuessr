@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { MapPin, Trophy } from 'lucide-react'
+import { requireUser } from '#/lib/auth-functions'
 import { DEFAULT_ROUNDS, getRounds, submitGuess } from '#/server/functions/game'
 import type { Coordinate, GuessResult, Round } from '#/lib/schemas'
 import { MAX_ROUND_SCORE } from '#/lib/scoring'
@@ -11,6 +12,9 @@ import { Badge } from '#/components/ui/badge'
 import { Progress } from '#/components/ui/progress'
 
 export const Route = createFileRoute('/play')({
+  beforeLoad: async () => {
+    await requireUser()
+  },
   validateSearch: (search: Record<string, unknown>): { mapId?: string } => ({
     mapId: typeof search.mapId === 'string' ? search.mapId : undefined,
   }),
